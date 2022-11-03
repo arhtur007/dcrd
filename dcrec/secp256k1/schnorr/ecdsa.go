@@ -289,6 +289,13 @@ func Verify(curve *secp256k1.KoblitzCurve, pubkey *secp256k1.PublicKey,
 	return ok
 }
 
+func Verify2(curve *secp256k1.KoblitzCurve, pubkey *secp256k1.PublicKey,
+	msg []byte, r *big.Int, s *big.Int) (bool, error) {
+	sig := NewSignature(r, s)
+	return schnorrVerify(curve, sig.Serialize(), pubkey, msg,
+		chainhash.HashB)
+}
+
 // schnorrRecover recovers a public key using a signature, hash function,
 // and message. It also attempts to verify the signature against the
 // regenerated public key.
