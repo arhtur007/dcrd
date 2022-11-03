@@ -27,9 +27,10 @@ func NewSignature(r, s *big.Int) *Signature {
 // Serialize returns the Schnorr signature in the more strict format.
 //
 // The signatures are encoded as
-//   sig[0:32]  R, a point encoded as big endian
-//   sig[32:64] S, scalar multiplication/addition results = (ab+c) mod l
-//     encoded also as big endian
+//
+//	sig[0:32]  R, a point encoded as big endian
+//	sig[32:64] S, scalar multiplication/addition results = (ab+c) mod l
+//	  encoded also as big endian
 func (sig Signature) Serialize() []byte {
 	rBytes := BigIntToEncodedBytes(sig.R)
 	sBytes := BigIntToEncodedBytes(sig.S)

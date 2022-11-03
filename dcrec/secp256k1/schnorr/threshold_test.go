@@ -13,7 +13,6 @@ import (
 
 	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrd/dcrec/secp256k1"
-	"github.com/stretchr/testify/assert"
 )
 
 type signerHex struct {
@@ -178,20 +177,18 @@ type ThresholdTestVector struct {
 }
 
 func GetThresholdTestVectors() []*ThresholdTestVector {
-	curve := secp256k1.S256()
-
 	var tvs []*ThresholdTestVector
 	for _, v := range thresholdTestVectorsHex {
 		msg, _ := hex.DecodeString(v.msg)
 		combSig, _ := hex.DecodeString(v.combinedSignature)
-		signers := make([]signer, len(v.signersHex), len(v.signersHex))
+		signers := make([]signer, len(v.signersHex))
 		for i, signerHex := range v.signersHex {
 			privkeyB, _ := hex.DecodeString(signerHex.privkey)
-			_, pubkey := secp256k1.PrivKeyFromBytes(curve, privkeyB)
+			_, pubkey := secp256k1.PrivKeyFromBytes(privkeyB)
 			privateNonceB, _ := hex.DecodeString(signerHex.privateNonce)
-			_, noncePub := secp256k1.PrivKeyFromBytes(curve, privateNonceB)
+			_, noncePub := secp256k1.PrivKeyFromBytes(privateNonceB)
 			pubKeySumLocalB, _ := hex.DecodeString(signerHex.pubKeySumLocal)
-			pubKeySumLocal, _ := secp256k1.ParsePubKey(pubKeySumLocalB, curve)
+			pubKeySumLocal, _ := secp256k1.ParsePubKey(pubKeySumLocalB)
 			partialSignature, _ := hex.DecodeString(signerHex.partialSignature)
 
 			signers[i].privkey = privkeyB
@@ -218,23 +215,31 @@ func TestSchnorrThresholdRef(t *testing.T) {
 	curve := secp256k1.S256()
 	tvs := GetThresholdTestVectors()
 	for _, tv := range tvs {
-		partialSignatures := make([]*Signature, len(tv.signers), len(tv.signers))
+		partialSignatures := make([]*Signature, len(tv.signers))
 
 		// Ensure all the pubkey and nonce derivation is correct.
 		for i, signer := range tv.signers {
 			nonce := nonceRFC6979(signer.privkey, tv.msg, nil,
 				Sha256VersionStringRFC6979)
-			assert.Equal(t, nonce, signer.privateNonce)
+			cmp := bytes.Equal(nonce[:], signer.privateNonce[:])
+			if !cmp {
+				t.Fatalf("expected %v, got %v", true, cmp)
+			}
 
-			_, pubkey := secp256k1.PrivKeyFromBytes(curve, signer.privkey)
-			assert.Equal(t, pubkey.Serialize(), signer.pubkey.Serialize())
+			_, pubkey := secp256k1.PrivKeyFromBytes(signer.privkey)
+			cmp = bytes.Equal(pubkey.Serialize()[:], signer.pubkey.Serialize()[:])
+			if !cmp {
+				t.Fatalf("expected %v, got %v", true, cmp)
+			}
 
-			_, pubNonce := secp256k1.PrivKeyFromBytes(curve, nonce)
-			assert.Equal(t, pubNonce.Serialize(), signer.publicNonce.Serialize())
+			_, pubNonce := secp256k1.PrivKeyFromBytes(nonce)
+			cmp = bytes.Equal(pubNonce.Serialize()[:], signer.publicNonce.Serialize()[:])
+			if !cmp {
+				t.Fatalf("expected %v, got %v", true, cmp)
+			}
 
 			// Calculate the public nonce sum.
-			pubKeys := make([]*secp256k1.PublicKey, len(tv.signers)-1,
-				len(tv.signers)-1)
+			pubKeys := make([]*secp256k1.PublicKey, len(tv.signers)-1)
 
 			itr := 0
 			for _, signer := range tv.signers {
@@ -245,35 +250,54 @@ func TestSchnorrThresholdRef(t *testing.T) {
 				pubKeys[itr] = signer.publicNonce
 				itr++
 			}
-			publicNonceSum := CombinePubkeys(curve, pubKeys)
-			assert.Equal(t, publicNonceSum, signer.pubKeySumLocal)
+			publicNonceSum := CombinePubkeys(pubKeys)
+			cmp = bytes.Equal(publicNonceSum.Serialize()[:], signer.pubKeySumLocal.Serialize()[:])
+			if !cmp {
+				t.Fatalf("expected %v, got %v", true, cmp)
+			}
 
 			sig, err := schnorrPartialSign(curve, tv.msg, signer.privkey, nonce,
 				publicNonceSum, testSchnorrSha256Hash)
-			assert.NoError(t, err)
-			assert.Equal(t, sig.Serialize(), signer.partialSignature)
+			if err != nil {
+				t.Fatalf("unexpected error %s, ", err)
+			}
+
+			cmp = bytes.Equal(sig.Serialize()[:], signer.partialSignature[:])
+			if !cmp {
+				t.Fatalf("expected %v, got %v", true, cmp)
+			}
 
 			partialSignatures[i] = sig
 		}
 
 		// Combine signatures.
 		combinedSignature, err := CombineSigs(curve, partialSignatures)
-		assert.NoError(t, err)
-		assert.Equal(t, combinedSignature.Serialize(), tv.combinedSignature)
+		if err != nil {
+			t.Fatalf("unexpected error %s, ", err)
+		}
+
+		cmp := bytes.Equal(combinedSignature.Serialize()[:], tv.combinedSignature[:])
+		if !cmp {
+			t.Fatalf("expected %v, got %v", true, cmp)
+		}
 
 		// Combine pubkeys.
-		allPubkeys := make([]*secp256k1.PublicKey, len(tv.signers),
-			len(tv.signers))
+		allPubkeys := make([]*secp256k1.PublicKey, len(tv.signers))
 		for i, signer := range tv.signers {
 			allPubkeys[i] = signer.pubkey
 		}
-		allPksSum := CombinePubkeys(curve, allPubkeys)
+		allPksSum := CombinePubkeys(allPubkeys)
 
 		// Verify the combined signature and public keys.
-		ok, err := schnorrVerify(curve, combinedSignature.Serialize(),
+		ok, err := schnorrVerify(combinedSignature.Serialize(),
 			allPksSum, tv.msg, testSchnorrSha256Hash)
-		assert.NoError(t, err)
-		assert.Equal(t, true, ok)
+		if err != nil {
+			t.Fatalf("unexpected error %s, ", err)
+		}
+
+		if !ok {
+			t.Fatalf("expected %v, got %v", true, ok)
+		}
 	}
 }
 
@@ -286,42 +310,36 @@ func TestSchnorrThreshold(t *testing.T) {
 	curve := secp256k1.S256()
 	msg, _ := hex.DecodeString(
 		"07BE073995BF78D440B660AF7B06DC0E9BA120A8D686201989BA99AA384ADF12")
-	privkeys := randPrivKeyList(curve, numSignatories)
+	privkeys := randPrivKeyList(numSignatories)
 
 	for i := 0; i < numTests; i++ {
 		numKeysForTest := tRand.Intn(maxSignatories-2) + 2
 		keyIndex := i * maxSignatories
-		keysToUse := make([]*secp256k1.PrivateKey, numKeysForTest, numKeysForTest)
+		keysToUse := make([]*secp256k1.PrivateKey, numKeysForTest)
 		for j := 0; j < numKeysForTest; j++ {
 			keysToUse[j] = privkeys[j+keyIndex]
 		}
-		pubKeysToUse := make([]*secp256k1.PublicKey, numKeysForTest,
-			numKeysForTest)
+		pubKeysToUse := make([]*secp256k1.PublicKey, numKeysForTest)
 		for j := 0; j < numKeysForTest; j++ {
-			_, pubkey := secp256k1.PrivKeyFromBytes(curve,
-				keysToUse[j].Serialize())
+			_, pubkey := secp256k1.PrivKeyFromBytes(keysToUse[j].Serialize())
 			pubKeysToUse[j] = pubkey
 		}
-		privNoncesToUse := make([]*secp256k1.PrivateKey, numKeysForTest,
-			numKeysForTest)
-		pubNoncesToUse := make([]*secp256k1.PublicKey, numKeysForTest,
-			numKeysForTest)
+		privNoncesToUse := make([]*secp256k1.PrivateKey, numKeysForTest)
+		pubNoncesToUse := make([]*secp256k1.PublicKey, numKeysForTest)
 		for j := 0; j < numKeysForTest; j++ {
 			nonce := nonceRFC6979(keysToUse[j].Serialize(), msg, nil,
 				BlakeVersionStringRFC6979)
-			privNonce, pubNonce := secp256k1.PrivKeyFromBytes(curve,
-				nonce)
+			privNonce, pubNonce := secp256k1.PrivKeyFromBytes(nonce)
 			privNoncesToUse[j] = privNonce
 			pubNoncesToUse[j] = pubNonce
 		}
 
-		partialSignatures := make([]*Signature, numKeysForTest, numKeysForTest)
+		partialSignatures := make([]*Signature, numKeysForTest)
 
 		// Partial signature generation.
 		for j := range keysToUse {
 			thisPubNonce := pubNoncesToUse[j]
-			localPubNonces := make([]*secp256k1.PublicKey, numKeysForTest-1,
-				numKeysForTest-1)
+			localPubNonces := make([]*secp256k1.PublicKey, numKeysForTest-1)
 			itr := 0
 			for _, pubNonce := range pubNoncesToUse {
 				if bytes.Equal(thisPubNonce.Serialize(), pubNonce.Serialize()) {
@@ -330,31 +348,40 @@ func TestSchnorrThreshold(t *testing.T) {
 				localPubNonces[itr] = pubNonce
 				itr++
 			}
-			publicNonceSum := CombinePubkeys(curve, localPubNonces)
+			publicNonceSum := CombinePubkeys(localPubNonces)
 
 			sig, err := schnorrPartialSign(curve, msg, keysToUse[j].Serialize(),
 				privNoncesToUse[j].Serialize(), publicNonceSum,
 				chainhash.HashB)
-			assert.NoError(t, err)
+			if err != nil {
+				t.Fatalf("unexpected error %s, ", err)
+			}
 
 			partialSignatures[j] = sig
 		}
 
 		// Combine signatures.
 		combinedSignature, err := CombineSigs(curve, partialSignatures)
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatalf("unexpected error %s, ", err)
+		}
 
 		// Combine pubkeys.
 		allPubkeys := make([]*secp256k1.PublicKey, numKeysForTest)
 		copy(allPubkeys, pubKeysToUse)
 
-		allPksSum := CombinePubkeys(curve, allPubkeys)
+		allPksSum := CombinePubkeys(allPubkeys)
 
 		// Verify the combined signature and public keys.
-		ok, err := schnorrVerify(curve, combinedSignature.Serialize(),
+		ok, err := schnorrVerify(combinedSignature.Serialize(),
 			allPksSum, msg, chainhash.HashB)
-		assert.NoError(t, err)
-		assert.Equal(t, true, ok)
+		if err != nil {
+			t.Fatalf("unexpected error %s, ", err)
+		}
+
+		if !ok {
+			t.Fatalf("expected %v, got %v", true, ok)
+		}
 
 		// Corrupt some memory and make sure it breaks something.
 		corruptWhat := tRand.Intn(3)
@@ -395,8 +422,7 @@ func TestSchnorrThreshold(t *testing.T) {
 
 		for j := range keysToUse {
 			thisPubNonce := pubNoncesToUse[j]
-			localPubNonces := make([]*secp256k1.PublicKey, numKeysForTest-1,
-				numKeysForTest-1)
+			localPubNonces := make([]*secp256k1.PublicKey, numKeysForTest-1)
 			itr := 0
 			for _, pubNonce := range pubNoncesToUse {
 				if bytes.Equal(thisPubNonce.Serialize(), pubNonce.Serialize()) {
@@ -405,7 +431,7 @@ func TestSchnorrThreshold(t *testing.T) {
 				localPubNonces[itr] = pubNonce
 				itr++
 			}
-			publicNonceSum := CombinePubkeys(curve, localPubNonces)
+			publicNonceSum := CombinePubkeys(localPubNonces)
 
 			sig, _ := schnorrPartialSign(curve, msg, keysToUse[j].Serialize(),
 				privNoncesToUse[j].Serialize(), publicNonceSum,
@@ -421,13 +447,15 @@ func TestSchnorrThreshold(t *testing.T) {
 		allPubkeys = make([]*secp256k1.PublicKey, numKeysForTest)
 		copy(allPubkeys, pubKeysToUse)
 
-		allPksSum = CombinePubkeys(curve, allPubkeys)
+		allPksSum = CombinePubkeys(allPubkeys)
 
 		// Nothing that makes it here should be valid.
 		if allPksSum != nil && combinedSignature != nil {
-			ok, _ = schnorrVerify(curve, combinedSignature.Serialize(),
+			ok, _ = schnorrVerify(combinedSignature.Serialize(),
 				allPksSum, msg, chainhash.HashB)
-			assert.Equal(t, false, ok)
+			if ok {
+				t.Fatalf("expected %v, got %v", false, ok)
+			}
 		}
 	}
 }
