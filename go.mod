@@ -4,11 +4,10 @@ go 1.17
 
 require (
 	github.com/agl/ed25519 v0.0.0-20170116200512-5312a6153412
-	github.com/btcsuite/btclog v0.0.0-20170525175852-1dfb68239632
+	github.com/btcsuite/btclog v0.0.0-20170628155309-84c8d2346e9f
 	github.com/btcsuite/go-flags v0.0.0-20150116065318-6c288d648c1c
 	github.com/btcsuite/go-socks v0.0.0-20170105172521-4720035b7bfd
 	github.com/btcsuite/goleveldb v1.0.0
-	github.com/btcsuite/seelog v0.0.0-20150116041118-313961b101eb
 	github.com/btcsuite/websocket v0.0.0-20150119174127-31079b680792
 	github.com/btcsuite/winsvc v1.0.0
 	github.com/davecgh/go-spew v1.1.1
