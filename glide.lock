@@ -48,7 +48,7 @@ imports:
   - spew
 - name: github.com/decred/bitset
   version: 484b833245d5f9046e2893a6bd2e54b1df3a53a4
-- name: github.com/decred/blake256
+- name: github.com/dchest/blake256
   version: a840e32d7c31fe2e0218607334cb120a683951a4
 - name: github.com/decred/dcrrpcclient
   version: 662d2409dd72666076572cb6a2944875b892e9a5

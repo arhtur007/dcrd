@@ -29,7 +29,7 @@ import:
   subpackages:
   - spew
 - package: github.com/decred/bitset
-- package: github.com/decred/blake256
+- package: github.com/dchest/blake256
 - package: github.com/decred/dcrrpcclient
 - package: github.com/decred/dcrutil
   subpackages:
